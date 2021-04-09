@@ -1,0 +1,380 @@
+---
+title: "Analysis of TidyTuesday dataset European Energy"
+author: "Elena Thomson"
+date: "25 March 2021"
+output: html_document
+---
+
+```{r setup, include=FALSE, warning = FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(tidytuesdayR)
+library(scales)
+library(forcats)
+library(patchwork)
+theme_set(theme_light())
+```
+
+First, I have loaded the data
+
+It is TidyTusday dataset from August 2020 with the information about the production and type of energy in European countries. This is the link to the page https://github.com/rfordatascience/tidytuesday/blob/master/data/2020/2020-08-04/readme.md#data-dictionary
+
+```{r data, results='hide', message = FALSE, warning=FALSE}
+tuesdata <- tidytuesdayR::tt_load('2020-08-04')
+
+energy_types_full   <- tuesdata$energy_types
+country_totals_full  <- tuesdata$country_totals
+```
+
+Exploratory data analysis
+
+Then, I have a look at the data and I have seen that there are some missing values and that data needs transformation, so I tidied the datasets I will use next.
+Country_totals dataset includes the information about the countries and what happen with the energy as example: export and import.
+```{r }
+#total is only one level, so I have removed it
+country_totals <- country_totals_full %>%
+  select(-level)
+
+country_totals <- country_totals %>%
+  replace_na(list(country_name = "United Kingdom")) %>%
+  replace_na(list(`2016` = "0.000")) %>%
+  mutate(`2016` = as.numeric(`2016`)) %>%
+  pivot_longer(cols = starts_with("2"),
+               names_to = "year",
+               values_to = "gigawatt_hours") %>%
+  mutate(year = as.integer(year)) %>%
+    mutate(country = ifelse(country == "UK", "GB", country),
+         country = ifelse(country == "EL", "GR", country))
+```
+
+Energy_type dataset includes the same country and the energy is presented as different types.
+```{r}
+energy_types <- energy_types_full  %>%
+  replace_na(list(country_name = "United Kingdom")) %>%
+    pivot_longer(cols = starts_with("2"),
+               names_to = "year",
+               values_to = "gigawatt_hours") %>%
+  mutate(year = as.integer(year)) %>%
+    mutate(country = ifelse(country == "UK", "GB", country),
+         country = ifelse(country == "EL", "GR", country))
+```
+
+# Question we want to answer
+
+Categorical variable could be plotted on barplot.
+Which countries (top 5) are the biggest importer and exporter? Do we see the changes over the years?
+
+About the renewable energy, which country produces more renewable energy. Who are the biggest producers of conventional energy? Where stands Ukraine?
+
+Who is the biggest producer/usage (top 5) of Nuclear/Hydro/Solar etc.
+
+What is the % of different type of energy in total energy production?
+
+Result of visualisation with main conclusion present in a short presentation with a few slides
+
+To go further:
+-more years could be explored (If we had more years, we could make heatmap with info for most of the country or interesting country how the amount of this renewable energy increased by years...),
+-present the results on the map,
+-read the report and find other parameters.
+
+# Production of energy by different countries
+Who is the biggest importer and how it changes by years?
+
+```{r }
+  g2016 <-country_totals %>%
+  filter( type == "Exports",
+          year == "2016")%>%
+  mutate(country_name = fct_reorder(country_name, gigawatt_hours)) %>%
+  top_n(5)%>%
+  ggplot(aes(gigawatt_hours, country_name)) +
+  geom_col() +
+  ggtitle("2016")+
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_x_continuous(labels = comma) +
+  labs(x = "Exported energy GWh (Gigawatt hours)",
+       y = "")
+
+  g2018<- country_totals %>%
+  filter( type == "Exports",
+          year == "2018")%>%
+  mutate(country_name = fct_reorder(country_name, gigawatt_hours)) %>%
+  top_n(5)%>%
+  ggplot(aes(gigawatt_hours, country_name)) +
+  geom_col() + 
+    ggtitle("2018")+
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_x_continuous(labels = comma) +
+  labs(x = "Exported energy GWh (Gigawatt hours)",
+       y = "")
+  
+
+  g2016 + g2018 + plot_layout(ncol = 2)
+```
+
+Austria and France significantly increased their export, Germany and Sweden also increased their export but not as significant.
+
+# Who is the biggest importer and how it changes by years?
+
+```{r }
+  im2016 <- country_totals %>%
+  filter( type == "Imports",
+          year == "2016")%>%
+  mutate(country_name = fct_reorder(country_name, gigawatt_hours)) %>%
+  top_n(5)%>%
+  ggplot(aes(gigawatt_hours, country_name)) +
+  geom_col() +
+  ggtitle("2016")+
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_x_continuous(labels = comma) +
+  labs(x = "Imported energy GWh (Gigawatt hours)",
+       y = "")
+      
+  
+  im2018<-  country_totals %>%
+  filter( type == "Imports",
+          year == "2018")%>%
+  mutate(country_name = fct_reorder(country_name, gigawatt_hours)) %>%
+  top_n(5)%>%
+  ggplot(aes(gigawatt_hours, country_name)) +
+  geom_col() + 
+    ggtitle("2018")+
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_x_continuous(labels = comma) +
+  labs(x = "Imported energy GWh (Gigawatt hours)",
+       y = "")
+  
+   im2016 + im2018 + plot_layout(ncol = 2)
+```
+
+In general, the import is lower than export (for example comparing Germany). The import is more consistent by those two years. The biggest importer in Europe is Italy followed by Germany, Austria and Netherlands.
+
+## Total energy production in Europe
+
+```{r}
+energy_types %>% 
+      group_by(year, type) %>%
+          summarise(total_energy = sum(gigawatt_hours)) %>% 
+  mutate(type = fct_reorder(type, total_energy, sum)) %>%
+  ggplot(aes(year, total_energy, fill = type)) +
+  geom_col()+
+  labs(x="",
+       y = "Total energy production GWh (Gigawatt hours)",
+       fill = "Type")+
+  scale_fill_brewer(palette = "Set2")
+```
+
+We can see that there is an increase in production of wind energy type and slight decrease in conventional thermal energy type. Probably there is slight increase in hydro. To find out more first. we will look at changes to type of energy and then we can explore changes for individual countries.
+
+Create a new dataset with summarised data to plot.
+
+```{r}
+europe_totals <- energy_types %>%
+  group_by(year, type) %>%
+  summarize(total_energy = sum(gigawatt_hours)) %>%
+  ungroup() %>%
+  mutate(type = fct_reorder(type, total_energy, sum))
+
+europe_totals %>%
+  ggplot(aes(year, total_energy, fill = type)) +
+  geom_col() +
+  scale_y_continuous(labels = comma) +
+  labs(x = "Year",
+       y = "Total energy production GWh (Gigawatt hours)")+
+  theme(legend.position = "none") +
+  facet_wrap(~ type, scales = "free_y") +
+  scale_fill_brewer(palette = "Set2")
+
+
+```
+
+We want to know which country contribute to the most to the growth of renewable energy and pumped hydro power.
+
+```{r}
+
+energy_types %>%
+  filter(type == "Wind",
+         year %in% c(2016, 2018)) %>%
+  group_by(year) %>%
+  arrange(desc(gigawatt_hours)) %>%
+  top_n(7) %>%
+  ungroup() %>%
+ mutate(country_name = reorder(country_name, gigawatt_hours)) %>%
+    ggplot(aes(gigawatt_hours, country_name)) +
+  geom_col() +
+  labs(y = "",
+       x = "Total energy production GWh (Gigawatt hours)")+
+  ggtitle("Wind energy")+
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_x_continuous(labels = comma) +
+  facet_wrap(~year)
+
+```
+
+We can see that Germany increased the production of wind energy as well as the UK and Turkey.
+
+
+```{r}
+energy_types %>%
+  filter(type == "Hydro",
+         year %in% c(2016, 2018)) %>%
+  group_by(year) %>%
+  arrange(desc(gigawatt_hours)) %>%
+  top_n(7) %>%
+  #ungroup() %>%
+ mutate(country_name = reorder(country_name, gigawatt_hours)) %>%
+    ggplot(aes(gigawatt_hours, country_name)) +
+  geom_col() +
+  labs(y = "",
+       x = "Total energy production GWh (Gigawatt hours)")+
+  ggtitle("Hydro energy")+
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_x_continuous(labels = comma) +
+  facet_wrap(~year)
+```
+
+Norway is the biggest producer of hydro energy and is consistent by years, following by Turkey, France, Sweden and Italy. France increased the production of hydro energy in 2018 compared to 2016.
+
+```{r}
+energy_types %>%
+  filter(type == "Pumped hydro power",
+         year %in% c(2016, 2018)) %>%
+  group_by(year) %>%
+  arrange(desc(gigawatt_hours)) %>%
+  top_n(7) %>%
+  ungroup() %>%
+ mutate(country_name = reorder(country_name, gigawatt_hours)) %>%
+    ggplot(aes(gigawatt_hours, country_name)) +
+  geom_col() +
+  labs(y = "",
+       x = "Total energy production GWh (Gigawatt hours)")+
+  ggtitle("Pumped hydro energy")+
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_x_continuous(labels = comma) +
+  facet_wrap(~year)
+
+```
+
+The amount of pumped hydro energy produced in European countries is not significant compared to other energy types. However, we can see the increase of its production in 2018 compared to 2016. The biggest producers are Austria, France, Germany and Norway (in 2018).
+
+```{r}
+energy_types %>%
+  filter(type == "Solar",
+         year %in% c(2016, 2018)) %>%
+  group_by(year) %>%
+  arrange(desc(gigawatt_hours)) %>%
+  top_n(7) %>%
+  ungroup() %>%
+ mutate(country_name = reorder(country_name, gigawatt_hours)) %>%
+    ggplot(aes(gigawatt_hours, country_name)) +
+  geom_col() +
+  labs(y = "",
+       x = "Total energy production GWh (Gigawatt hours)")+
+  ggtitle("Solar energy")+
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_x_continuous(labels = comma) +
+  facet_wrap(~year)
+
+```
+
+Germany is the biggest producer of solar energy and it is increased significantly in 2018. There is also another point that the UK increased the production of solar energy in 2018.
+
+```{r}
+energy_types %>%
+  filter(type == "Nuclear",
+         year %in% c(2016, 2018)) %>%
+  group_by(year) %>%
+  arrange(desc(gigawatt_hours)) %>%
+  top_n(7) %>%
+  ungroup() %>%
+ mutate(country_name = reorder(country_name, gigawatt_hours)) %>%
+    ggplot(aes(gigawatt_hours, country_name)) +
+  geom_col() +
+  labs(y = "",
+       x = "Total energy production GWh (Gigawatt hours)")+
+  ggtitle("Nuclear")+
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_x_continuous(labels = comma) +
+  facet_wrap(~year)
+
+```
+
+The biggest producer of nuclear power is France followed by Ukraine.
+
+```{r}
+energy_types %>%
+  filter(type == "Conventional thermal",
+         year %in% c(2016, 2018)) %>%
+  group_by(year) %>%
+  arrange(desc(gigawatt_hours)) %>%
+  top_n(10) %>%
+  ungroup() %>%
+ mutate(country_name = reorder(country_name, gigawatt_hours)) %>%
+    ggplot(aes(gigawatt_hours, country_name)) +
+  geom_col() +
+  labs(y = "",
+       x = "Total energy production GWh (Gigawatt hours)")+
+  ggtitle("Conventional thermal")+
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_x_continuous(labels = comma) +
+  facet_wrap(~year)
+
+```
+
+The biggest producer of conventional thermal energy is Germany followed by the UK, Italy and Turkey. What is interesting that we observe the decrease of production of this energy by many countries (especially the UK) and increase in Turkey.
+
+# Case of two countries - the UK and Ukraine
+
+I live in the UK so I am interested how much energy of different types is produced here and changes by years
+
+```{r}
+energy_types %>%
+  filter(country_name == "United Kingdom",
+         type != "Other",
+        type != "Geothermal") %>%
+  group_by(year) %>%
+  ggplot(aes(year, gigawatt_hours, fill = type)) +
+  geom_col() +
+  labs(x = "Year",
+       y = "Total energy production GWh (Gigawatt hours)")+
+  ggtitle("United Kingdom")+
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.position = "none") +
+  scale_y_continuous(labels = comma) +
+  facet_wrap(~ type, scales = "free_y") +
+  scale_fill_brewer(palette = "Set2")
+
+```
+
+We can observe the increase of renewable energy production (solar and wind energy) and decrease in the conventional energy type. Still the amount of conventional thermal energy produced is much bigger compared to other types of energy. Conventional, nuclear and wind energy are the three biggest types of energy that produced in the UK.
+
+
+I am also a Ukrainian, so I am interested in changes in Ukraine.
+
+```{r}
+energy_types %>%
+  filter(country_name == "Ukraine", 
+         type != "Other",
+        type != "Geothermal") %>%
+  group_by(year) %>%
+  ggplot(aes(year, gigawatt_hours, fill = type)) +
+  geom_col() +
+  labs(x = "Year",
+       y = "Total energy production GWh (Gigawatt hours)")+
+  ggtitle("Ukraine")+
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.position = "none") +
+  scale_y_continuous(labels = comma) +
+  facet_wrap(~ type, scales = "free_y") +
+  scale_fill_brewer(palette = "Set2")
+    
+```
+
+Two main type of energy produced in Ukraine are conventional thermal and nuclear. We can also see the increase of production of renewable type of energy such as hydro, solar and wind (despite the small amount I am still pleased to know that Ukraine going greener).
+
+#Conclusion
+
+I have analysed the dataset from TidsyTusday about the energy production in different European countries.
+
+The biggest exporter is Germany. The biggest importer is Italy.
+
+Conventional thermal energy is the biggest type followed by nuclear and hydro. We observe the decrease in production of conventional energy in 2018. We also observe the increase of production of renewable energy such as solar, wind and geothermal energy type. The biggest contributors to those changes are Germany, the United Kingdom and Norway.
